@@ -307,6 +307,8 @@ class ConnectionSocket(koemyd.base.UUIDObject):
     def connect(self, address):
         koemyd.logger.info("c#%s:s#%s" % (self.__link.uuid, self.uuid), "p#%s:%d:connecting..." % address)
 
+        if not address == self.__peer_address: self.reset()
+
         try:
             self.__sock.connect(address)
         except socket.timeout:
