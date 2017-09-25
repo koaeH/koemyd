@@ -393,13 +393,13 @@ class ConnectionSocket(koemyd.base.UUIDObject):
                     c = self.rx(koemyd.const.SOCKET_BUFSIZE)
                     if c: d += c
                     else:
-                        raise ConnectionSocketError("p#%s:%d:rx:disconnected peer" % self.__peer_address)
+                        raise ConnectionSocketError("p#%s:%d:disconnected" % self.__peer_address)
             else:
-                raise ConnectionTimeoutError("p#%s:%d:readline:connection timeout" % self.__peer_address)
+                raise ConnectionTimeoutError("p#%s:%d:connection timeout!" % self.__peer_address)
         self.__sock.setblocking(1)
 
         if not '\n' in d:
-            raise ConnectionSocketError("p#%s:%d:readline:maximum length exceeded" % self.__peer_address)
+            raise ConnectionSocketError("p#%s:%d:maximum length exceeded!" % self.__peer_address)
 
         if '\r' in d:
             i = d.find('\r')

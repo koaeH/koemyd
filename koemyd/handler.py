@@ -138,7 +138,11 @@ class Handler(threading.Thread):
 
     def __handle(self):
         try:
-            self.__parse_client_request()
+            try:
+                self.__parse_client_request()
+            except koemyd.fetching.ConnectionError as e:
+                raise koemyd.struct.HTTPRequestError(408, e.message)
+
             self.__setup_server_connect()
 
             if self.__request.is_tunneling: self.__link.relay()
