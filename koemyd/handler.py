@@ -115,7 +115,7 @@ class Handler(threading.Thread):
         else:
             response.headers["Connection"] = "close"
 
-        encoder = response.encoder
+        coder = response.coder
 
         self.__link.client.tx(response.line)
         self.__link.client.tx(koemyd.const.CRLF)
@@ -127,7 +127,7 @@ class Handler(threading.Thread):
         self.__link.client.tx(koemyd.const.CRLF)
 
         if response.expect_body:
-            if encoder: self.__link.relay_encoded(encoder)
+            if coder: self.__link.relay_encoded(coder)
             else:
                 self.__link.relay(
                     long(response.headers["Content-Length"]),

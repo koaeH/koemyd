@@ -13,9 +13,9 @@ class CoderException(Exception): pass
 
 class CoderError(Exception): pass
 
-class ChunkedCoder(Coder):
+class ChunkCoder(Coder):
     def __init__(self):
-        super(ChunkedCoder, self).__init__(k_f=True)
+        super(ChunkCoder, self).__init__(k_f=True)
 
         self._chunk = koemyd.struct.HTTPChunk()
         self._chunk_queue = list()
@@ -33,9 +33,9 @@ class ChunkedCoder(Coder):
 
 class ChunksCodedException(Exception): pass
 
-class ChunkedDecoder(ChunkedCoder):
+class ChunkDecoder(ChunkCoder):
     def __init__(self):
-        super(ChunkedDecoder, self).__init__()
+        super(ChunkDecoder, self).__init__()
 
         self.__decoder = self.__cr_decoder()
 
@@ -54,7 +54,7 @@ class ChunkedDecoder(ChunkedCoder):
     
             try:
                 self._chunk.size = long(s_s, 16)
-            except ValueError: raise ChunkedDecoderError("chunk-size:bad syntax")
+            except ValueError: raise ChunkDecoderError("chunk-size:bad syntax")
     
             if 0 == self._chunk.size: # i.e., last-chunk!
                 self._chunk_queue.append(self._chunk)
@@ -79,37 +79,30 @@ class ChunkedDecoder(ChunkedCoder):
 
 class ChunksDecodedException(ChunksCodedException): pass
 
-class ChunkedDecoderError(CoderError): pass
+class ChunkDecoderError(CoderError): pass
 
-class ChunkedEncoder(ChunkedCoder):
+class ChunkEncoder(ChunkCoder):
     def __init__(self):
-        super(ChunkedEncoder, self).__init__()
+        super(ChunkEncoder, self).__init__()
 
-        self.__encoder = self.__cr_encoder()
+    def __encode(self, d=str()):
+        if d:
+            self._chunk.size = len(d)
+            self._chunk.data = str(d)
 
-        self.__encoder.next()
+        self._chunk_queue.append(self._chunk)
 
-    def __cr_encoder(self):
-        while self.keep_feeding:
-            d = (yield)
-            if d:
-                self._chunk.size = len(d)
-                self._chunk.data = str(d)
-
-            self._chunk_queue.append(self._chunk)
-
-            if d: self._chunk = koemyd.struct.HTTPChunk()
-            else:
-                return
-
-    def feed(self, r_data=str()):
-        try: self.__encoder.send(r_data)
-        except StopIteration:
+        if d: self._chunk = koemyd.struct.HTTPChunk()
+        else:
             self.keep_feeding = False
 
-        if self._chunk_queue:
-            raise ChunksEncodedException
+    def feed(self, r_data=str()):
+        if self.keep_feeding:
+            self.__encode(r_data)
+
+            if self._chunk_queue:
+                raise ChunksEncodedException
 
 class ChunksEncodedException(ChunksCodedException): pass
 
-class ChunkedEncoderError(CoderError): pass
+class ChunkEncoderError(CoderError): pass

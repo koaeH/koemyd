@@ -86,24 +86,23 @@ class ServerResponse(koemyd.struct.HTTPResponse):
     def __init__(self, line):
         super(ServerResponse, self).__init__(line)
 
-        self.__encoder = None
+        self.__coder = None
         
-    def __set_encoder(self):
+    def __set_coder(self):
         if "Transfer-Encoding" in self.headers:
             h_t_e = self.headers["Transfer-Encoding"].lower()
             if h_t_e == "chunked":
-                self.__encoder = koemyd.trans.ChunkedDecoder()
+                self.__coder = koemyd.trans.ChunkDecoder()
             else:
                 raise ServerResponse(502, "%s:unsupported transfer-encoding")
         elif not "Content-Length" in self.headers:
-            self.__encoder = koemyd.trans.ChunkedEncoder()
-
             self.headers["Transfer-Encoding"] = "chunked"
+            self.__coder = koemyd.trans.ChunkEncoder()
 
-        return self.__encoder
+        return self.__coder
 
     @property
-    def encoder(self): return self.__encoder if self.__encoder else self.__set_encoder()
+    def coder(self): return self.__coder if self.__coder else self.__set_coder()
 
     @property
     def is_tainted(self):
@@ -218,18 +217,18 @@ class Connection(koemyd.base.UUIDObject):
                                     bytes_sent_to_client
                                 ))
 
-    def relay_encoded(self, encoder):
+    def relay_encoded(self, coder):
         self.server.setblocking(0)
         _time_last_op = time.time()
-        while encoder.keep_feeding:
+        while coder.keep_feeding:
             if (time.time() - _time_last_op) < koemyd.const.SOCKET_TIMEOUT:
                 r, _, _ = select.select([self.server], [], [], koemyd.const.SOCKET_TIMEOUT)
 
                 if self.server in r:
                     try: 
-                         encoder.feed(self.server.rx(koemyd.const.SOCKET_BUFSIZE))
+                         coder.feed(self.server.rx(koemyd.const.SOCKET_BUFSIZE))
                     except koemyd.trans.ChunksCodedException:
-                        for c in encoder.flush():
+                        for c in coder.flush():
                             koemyd.logger.data("c#%s" % self.uuid,
                                                "s#%s->s#%s:relay_encoded:chunk(%s,%s)" % (
                                                   self.server.uuid, self.client.uuid,
@@ -244,7 +243,7 @@ class Connection(koemyd.base.UUIDObject):
 
         self.client.tx(koemyd.const.HTTP_CRLF)
 
-        self.server.cache += encoder.cache
+        self.server.cache += coder.cache
 
         if not self.server.is_tainted: 
             self.server.readline()
