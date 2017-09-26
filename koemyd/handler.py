@@ -12,6 +12,7 @@ import koemyd.const
 import koemyd.struct
 import koemyd.logger
 import koemyd.fetching
+import koemyd.messaging
 
 class Handler(threading.Thread):
     def __init__(self, koemyd_connection_link):
@@ -24,7 +25,7 @@ class Handler(threading.Thread):
         while not line.strip(koemyd.const.CRLF):
             line = self.__link.client.readline()
 
-        self.__request = koemyd.fetching.ClientRequest(line)
+        self.__request = koemyd.messaging.ClientRequest(line)
 
         line = self.__link.client.readline()
         while line.strip(koemyd.const.CRLF):
@@ -55,7 +56,7 @@ class Handler(threading.Thread):
             ]))
 
     def __relay_server_request(self):
-        request = koemyd.fetching.ServerRequest(self.__request.method, self.__request.path)
+        request = koemyd.messaging.ServerRequest(self.__request.method, self.__request.path)
         for k, v in self.__request.headers.iteritems():
             if k.lower() not in map(str.lower, koemyd.const.HTTP_HEADERS_SKIP_TO_SERVER):
                 request.headers[k] = v
@@ -81,7 +82,7 @@ class Handler(threading.Thread):
             )
 
     def __relay_server_reply(self):
-        response = koemyd.fetching.ServerResponse(self.__link.server.readline())
+        response = koemyd.messaging.ServerResponse(self.__link.server.readline())
         line = self.__link.server.readline()
         while line.strip(koemyd.const.CRLF):
             try:
@@ -100,7 +101,7 @@ class Handler(threading.Thread):
                 )
             )
 
-        if response.is_tainted:
+        if not response.is_persistent:
             self.__link.server.is_tainted = True
 
             koemyd.logger.info("c#%s" % self.__link.uuid,

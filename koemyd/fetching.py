@@ -5,7 +5,6 @@ import errno
 import socket
 import select
 import httplib
-import urlparse
 
 import koemyd.base
 import koemyd.util
@@ -13,109 +12,6 @@ import koemyd.const
 import koemyd.trans
 import koemyd.struct
 import koemyd.logger
-
-class ClientRequest(koemyd.struct.HTTPRequest):
-    def __init__(self, line=str()):
-        super(ClientRequest, self).__init__(line)
-
-        self.scheme = str() # e.g., http
-        self.host   = str() # e.g., remote.test
-        self.port   = int() # e.g., 80
-        self.path   = str() # e.g., /
-
-        self.__parse()
-
-    def __parse(self):
-        if not self.method == "CONNECT":
-            parts = urlparse.urlparse(self.uri)
-            if parts.scheme:
-                self.scheme = parts.scheme
-                if self.scheme in ["http"]:
-                    self.host = parts.hostname
-                    if not self.host:
-                        raise ClientRequestError(400, "missing hostname in request URI")
-                    self.port = int(parts.port or 80)
-                    self.path = parts.path or '/'
-                    if parts.query:
-                        self.path += "?%s" % parts.query
-                else:
-                    raise ClientRequestError(400, "%s:unknown scheme" % parts.scheme)
-            else:
-                if parts.path.startswith('/'):
-                    raise ClientRequestError(403, "%s:access denied" % parts.path)
-                else:
-                    raise ClientRequestError(400, "could not parse request")
-        else:
-            try:
-                self.host, self.port = self.uri.split(':') # do not , 1)
-            except ValueError:
-                raise ClientRequestError(400, "CONNECT:bad address")
-
-            self.host = self.host.lower()
-            self.port = int(self.port)
-
-    @property
-    def is_tunneling(self): return "CONNECT" == self.method
-
-    @property
-    def address(self): return (self.host, self.port)
-
-    @property
-    def is_persistent(self):
-        k_a = True if self.http_version.endswith("1.1") else False
-
-        for k in ["Proxy-Connection", "Connection"]:
-            if k in self.headers:
-               if "keep-alive" == self.headers[k].lower(): k_a = 1
-               if      "close" == self.headers[k].lower(): k_a = 0
-               if             not self.headers[k].strip(): k_a = 0
-
-        if self.is_tunneling: k_a = False
-
-        return bool(k_a)
-
-    def __str__(self): return self.uri # auth-form
-
-class ClientRequestError(koemyd.struct.HTTPError): pass
-
-class ServerRequest(koemyd.struct.HTTPRequest):
-    def __init__(self, method, path, http_version="HTTP/1.1"):
-        super(ServerRequest, self).__init__("%s %s %s" % (method, path, http_version))
-
-class ServerResponse(koemyd.struct.HTTPResponse):
-    def __init__(self, line):
-        super(ServerResponse, self).__init__(line)
-
-        self.__coder = None
-        
-    def __set_coder(self):
-        if "Transfer-Encoding" in self.headers:
-            h_t_e = self.headers["Transfer-Encoding"].lower()
-            if h_t_e == "chunked":
-                self.__coder = koemyd.trans.ChunkDecoder()
-            else:
-                raise ServerResponse(502, "%s:unsupported transfer-encoding")
-        elif not "Content-Length" in self.headers:
-            self.headers["Transfer-Encoding"] = "chunked"
-            self.__coder = koemyd.trans.ChunkEncoder()
-
-        return self.__coder
-
-    @property
-    def coder(self): return self.__coder if self.__coder else self.__set_coder()
-
-    @property
-    def is_tainted(self):
-        i_t = int()
-
-        if "Connection" in self.headers:
-            if "keep-alive" == self.headers["Connection"].lower(): i_t = 0
-            if      "close" == self.headers["Connection"].lower(): i_t = 1
-            if             not self.headers["Connection"].strip(): i_t = 1
-        else:
-            i_t = 1
-
-        return bool(i_t)
 
 class Connection(koemyd.base.UUIDObject):
     RELAY_PERM_S_RX_C_TX = 0x118E0006
@@ -382,24 +278,19 @@ class ConnectionSocket(koemyd.base.UUIDObject):
 
             koemyd.logger.data("c#%s:s#%s" % (self.__link.uuid,self.uuid), "cr:%s" % koemyd.util.dump(d))
 
-        self.__sock.setblocking(0)
-        _last_access = time.time()
         while not '\n' in d and max_line_length > len(d):
-            if (time.time() - _last_access) < koemyd.const.SOCKET_TIMEOUT:
-                r, _, _ = select.select([self.__sock], [], [], koemyd.const.SOCKET_TIMEOUT)
-                if self.__sock in r:
-                    _last_access = time.time()
+            r, _, _ = select.select([self.__sock], [], [], koemyd.const.SOCKET_TIMEOUT)
 
-                    c = self.rx(koemyd.const.SOCKET_BUFSIZE)
-                    if c: d += c
-                    else:
-                        raise ConnectionSocketError("p#%s:%d:disconnected" % self.__peer_address)
+            if self.__sock in r:
+                c = self.rx(koemyd.const.SOCKET_BUFSIZE)
+                if c: d += c
+                else:
+                    raise DisconnectedPeerError
             else:
-                raise ConnectionTimeoutError("p#%s:%d:connection timeout!" % self.__peer_address)
-        self.__sock.setblocking(1)
+                raise ConnectionTimeoutError("p#%s:%d:rx:connection timeout" % self.__peer_address)
 
         if not '\n' in d:
-            raise ConnectionSocketError("p#%s:%d:maximum length exceeded!" % self.__peer_address)
+            raise ConnectionSocketError("p#%s:%d:rx:maximum length exceeded" % self.__peer_address)
 
         if '\r' in d:
             i = d.find('\r')
@@ -438,4 +329,5 @@ class ConnectionSocket(koemyd.base.UUIDObject):
 
 class ConnectionSocketError(ConnectionError): pass
 class ConnectionTimeoutError(ConnectionSocketError): pass
+class DisconnectedPeerError(ConnectionSocketError): pass
 

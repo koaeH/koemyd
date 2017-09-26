@@ -14,5 +14,6 @@ def main(argv):
     parser.parse_args(argv)
 
     from koemyd.daemon import Server
-    daemon = koemyd.daemon.Server()
+
+    daemon = Server()
     daemon.start()

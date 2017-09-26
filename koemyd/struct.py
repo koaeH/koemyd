@@ -6,70 +6,44 @@ import koemyd.base
 import koemyd.const
 
 class HTTPMessage(koemyd.base.UUIDObject):
-    def __init__(self, line=str()):
-        # e.g., GET /c.php HTTP/1.1
-        self.message_line = self.line = line
-        
-        # e.g., {"Host":"remote.test","TE":"",...}
-        self.headers = koemyd.struct.HTTPHeaders()
+    def __init__(self, line):
+        super(HTTPMessage, self).__init__()
+
+        self.line, self.headers = line, HTTPHeaders()
 
     @property
-    def message_head(self):
-        m = str()
+    def head(self):
+        m = bytearray()
         for header in self.headers.iteritems():
             m += "%s: %s" % header
             m += koemyd.const.CRLF
 
-        return m
+        return str(m)
 
 class HTTPRequest(HTTPMessage):
     def __init__(self, line=str()):
         super(HTTPRequest, self).__init__(line)
 
-        self.method       = str() # e.g., POST
-        self.uri          = str() # e.g., /f.php
-        self.http_version = str() # e.g., HTTP/1.1
-
-        # e.g., GET /~koaeH/ HTTP/1.1
-        self.request_line = self.line
-
-        self.__parse()
-
-    def __parse(self):
         try:
-            self.method, self.uri, self.http_version = self.line.split()
+            self.method, self.uri, self.http_version = line.split()
         except ValueError:
-            raise HTTPRequestError(400, "request:could not parse line!")
+            raise HTTPRequestError(400, "request:line:could not parse")
 
         if self.method not in map(str.upper, koemyd.const.HTTP_METHODS_ALLOWED):
-            raise HTTPRequestError(405, "request:%s:method not allowed!" % self.method)
-
-        if self.http_version not in ["HTTP/0.9", "HTTP/1.0", "HTTP/1.1"]:
-            raise HTTPRequestError(505, "request:%s:not supported" % self.http_version)
+            raise HTTPRequestError(405, "request:%s:not allowed" % self.method)
 
 class HTTPResponse(HTTPMessage):
     def __init__(self, line=str()):
         super(HTTPResponse, self).__init__(line)
 
-        self.http_version = str() # e.g., HTTP/1.1
-        self.code         = int() # e.g., 200
-        self.reason       = str() # e.g., OK
-
-        # e.g., HTTP/1.1 204 No Content
-        self.status_line = self.line
-
-        self.__parse()
-
-    def __parse(self):
         try:
-            self.http_version, _c, _r = self.line.split(None, 2)
-            self.reason = _r.strip()
-            self.code = int(_c)
+            self.http_version, _s_code, self.reason = line.split(None, 2)
+            self.code    = int(_s_code)
         except ValueError as e:
-            raise HTTPResponseError(502, "response:could not parse line")
+            raise HTTPResponseError(502, "response:line:could not parse")
 
     @property
-    def expect_body(self): # cf. Section 4.3 of [RFC2616]
+    def expect_body(self): # cf. Section 3.3 of [RFC7230]
         return True if self.code not in [100, 101, 204, 304] else False
 
 class HTTPHeaders(dict):
@@ -105,13 +79,13 @@ class HTTPHeaders(dict):
 
     @staticmethod
     def parse(line):
-        if ':' in line:
-            try:
-                return line.split(':', 1)
-            except ValueError:
-                return line, str()
-        else:
+        if ':' not in line:
             raise HTTPHeaderError(400, "header:missing colon")
+        else:
+            try:
+                return tuple(line.split(':', 1))
+            except ValueError:
+                return tuple(line, str())
 
 class HTTPChunk(object):
     def __init__(self): self.size, self.data = int(), str()

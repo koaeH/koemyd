@@ -46,23 +46,24 @@ class ChunkDecoder(ChunkCoder):
 
         while self.keep_feeding or self.cache:
             while koemyd.const.HTTP_CRLF not in self.cache: self.cache += (yield)
-    
+
             s_i = self.cache.index(koemyd.const.HTTP_CRLF)
             s_s = self.cache[:s_i]
-    
+
             self.cache = self.cache[s_i + 2:] # HTTP_CRLF
-    
+
             try:
                 self._chunk.size = long(s_s, 16)
-            except ValueError: raise ChunkDecoderError("chunk-size:bad syntax")
-    
-            if 0 == self._chunk.size: # i.e., last-chunk!
+            except ValueError:
+                raise ChunkDecoderError("chunk-size:could not parse")
+
+            if 0 == self._chunk.size: # i.e., last-chunk
                 self._chunk_queue.append(self._chunk)
 
                 return
-    
+
             while len(self.cache) < (self._chunk.size + 2): self.cache += (yield)
-    
+
             self._chunk.data = self.cache[:self._chunk.size]
             self.cache = self.cache[self._chunk.size + 2:]
             self._chunk_queue.append(self._chunk) # next
@@ -85,7 +86,7 @@ class ChunkEncoder(ChunkCoder):
     def __init__(self):
         super(ChunkEncoder, self).__init__()
 
-    def __encode(self, d=str()):
+    def __encode(self, d):
         if d:
             self._chunk.size = len(d)
             self._chunk.data = str(d)
@@ -101,8 +102,8 @@ class ChunkEncoder(ChunkCoder):
             self.__encode(r_data)
 
             if self._chunk_queue:
-                raise ChunksEncodedException
+                raise ChunkEncodedException
 
-class ChunksEncodedException(ChunksCodedException): pass
+class ChunkEncodedException(ChunksCodedException): pass
 
 class ChunkEncoderError(CoderError): pass

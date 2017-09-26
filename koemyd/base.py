@@ -10,4 +10,3 @@ class UUIDObject(Base):
 
     @property
     def uuid(self): return self.__uuid.hex[:4]
-
